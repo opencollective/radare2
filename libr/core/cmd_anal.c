@@ -292,7 +292,6 @@ static const char *help_msg_af[] = {
 	"afC[lc]", " ([addr])@[addr]", "calculate the Cycles (afC) or Cyclomatic Complexity (afCc)",
 	"afc", "[?] type @[addr]", "set calling convention for function",
 	"afd", "[addr]","show function + delta for given offset",
-	"aff", "", "re-adjust function boundaries to fit",
 	"afF", "[1|0|]", "fold/unfold/toggle",
 	"afi", " [addr|fcn.name]", "show function(s) information (verbose afl)",
 	"afj", " [tableaddr] [count]", "analyze function jumptable",
@@ -2810,7 +2809,7 @@ static int cmd_anal_fcn(RCore *core, const char *input) {
 			ut64 addr = input[2]
 				? r_num_math (core->num, input + 2)
 				: core->offset;
-			r_anal_fcn_del_locs (core->anal, addr);
+		//	r_anal_fcn_del_locs (core->anal, addr);
 			r_anal_fcn_del (core->anal, addr);
 		}
 		break;
@@ -2876,9 +2875,6 @@ static int cmd_anal_fcn(RCore *core, const char *input) {
 			}
 		}
 		}
-		break;
-	case 'f': // "aff"
-		r_anal_fcn_fit_overlaps (core->anal, NULL);
 		break;
 	case 'u': // "afu"
 		{

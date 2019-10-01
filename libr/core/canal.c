@@ -759,7 +759,7 @@ static int core_anal_fcn(RCore *core, ut64 at, ut64 from, int reftype, int depth
 	int i, nexti = 0;
 	ut64 *next = NULL;
 	int fcnlen;
-	RAnalFunction *fcn = r_anal_fcn_new ();
+	RAnalFunction *fcn = r_anal_fcn_new (core->anal);
 	const char *fcnpfx = r_config_get (core->config, "anal.fcnprefix");
 	if (!fcnpfx) {
 		fcnpfx = "fcn";
@@ -1698,7 +1698,6 @@ static int core_anal_graph_nodes(RCore *core, RAnalFunction *fcn, int opts, PJ *
 /* analyze a RAnalBlock at the address at and add that to the fcn function. */
 // TODO: move into RAnal.
 R_API int r_core_anal_bb(RCore *core, RAnalFunction *fcn, ut64 addr, int head) {
-	RAnalBlock *bb, *bbi;
 	RListIter *iter;
 	ut64 jump, fail;
 	int rc = true;
@@ -1708,19 +1707,41 @@ R_API int r_core_anal_bb(RCore *core, RAnalFunction *fcn, ut64 addr, int head) {
 	if (--fcn->depth <= 0) {
 		return false;
 	}
-
-	bb = r_anal_bb_new ();
-	if (!bb) {
-		return false;
+	bool newBB = false;
+#if 1
+	RAnalBlock *bb = r_anal_get_block (core->anal, addr);
+	if (bb) {
+		if (!core->anal->opt.jmpmid || !x86 || r_anal_bb_op_starts_at (bb, addr)) {
+			ret = r_anal_fcn_split_bb (core->anal, fcn, bb, addr);
+		}
+	} else {
+		bb = r_anal_bb_new ();
+		if (!bb) {
+			return false;
+		}
+		newBB = true;
 	}
-
+#else
+	eprintf ("SLOW\n");
+	RAnalBlock *bbi, *bb = NULL;
+	bool found = false;
 	r_list_foreach (fcn->bbs, iter, bbi) {
-		if (addr >= bbi->addr && addr < bbi->addr + bbi->size
-		    && (!core->anal->opt.jmpmid || !x86 || r_anal_bb_op_starts_at (bbi, addr))) {
-			ret = r_anal_fcn_split_bb (core->anal, fcn, bbi, addr);
-			break;
+		if (addr >= bbi->addr && addr < bbi->addr + bbi->size) {
+			if (!core->anal->opt.jmpmid || !x86 || r_anal_bb_op_starts_at (bbi, addr)) {
+				ret = r_anal_fcn_split_bb (core->anal, fcn, bbi, addr);
+				break;
+			}
+			found = true;
 		}
 	}
+	if (!found) {
+		bb = r_anal_bb_new ();
+		if (!bb) {
+			return false;
+		}
+		newBB = true;
+	}
+#endif
 	ut8 *buf = NULL;
 	if (ret == R_ANAL_RET_DUP) {
 		/* Dupped basic block */
@@ -1751,7 +1772,7 @@ R_API int r_core_anal_bb(RCore *core, RAnalFunction *fcn, ut64 addr, int head) {
 			if (bblen == R_ANAL_RET_END) { /* bb analysis complete */
 				ret = r_anal_fcn_bb_overlaps (fcn, bb);
 				if (ret == R_ANAL_RET_NEW) {
-					r_anal_fcn_bbadd (fcn, bb);
+					r_anal_function_add_block_ll (fcn, bb);
 					fail = bb->fail;
 					jump = bb->jump;
 					if (fail != -1) {
@@ -1770,8 +1791,11 @@ R_API int r_core_anal_bb(RCore *core, RAnalFunction *fcn, ut64 addr, int head) {
 error:
 	rc = false;
 fin:
-	r_list_delete_data (fcn->bbs, bb);
-	r_anal_bb_free (bb);
+	if (newBB) {
+		r_anal_block_unref (bb);
+		r_list_delete_data (fcn->bbs, bb);
+		r_anal_bb_free (bb);
+	}
 	free (buf);
 	return rc;
 }
@@ -3161,6 +3185,9 @@ R_API int r_core_anal_fcn_list(RCore *core, const char *input, const char *rad) 
 		addr = r_num_math (core->num, name);
 	}
 
+#if NEWBBAPI
+	RList *fcns = r_anal_get_functions (core->anal, addr);
+#else
 	RList *fcns = r_list_newf (NULL);
 	if (!fcns) {
 		return -1;
@@ -3172,7 +3199,7 @@ R_API int r_core_anal_fcn_list(RCore *core, const char *input, const char *rad) 
 			r_list_append (fcns, fcn);
 		}
 	}
-
+#endif
 	// r_list_sort (fcns, &cmpfcn);
 	if (!rad) {
 		fcn_list_default (core, fcns, false);
@@ -3253,7 +3280,6 @@ R_API int r_core_anal_fcn_list(RCore *core, const char *input, const char *rad) 
 		fcn_list_default (core, fcns, false);
 		break;
 	}
-
 	r_list_free (fcns);
 	return 0;
 }
@@ -3270,15 +3296,12 @@ static RList *recurse(RCore *core, RAnalBlock *from, RAnalBlock *dest) {
 }
 
 static RList *recurse_bb(RCore *core, ut64 addr, RAnalBlock *dest) {
-	RAnalBlock *bb;
-	RList *ret;
-	bb = r_anal_bb_from_offset (core->anal, addr);
+	RAnalBlock *bb = r_anal_bb_from_offset (core->anal, addr);
 	if (bb == dest) {
 		eprintf ("path found!");
 		return NULL;
 	}
-	ret = recurse (core, bb, dest);
-	return ret;
+	return recurse (core, bb, dest);
 }
 
 // TODO: move this logic into the main anal loop
@@ -4455,7 +4478,7 @@ R_API void r_core_anal_fcn_merge(RCore *core, ut64 addr, ut64 addr2) {
 				max = bb->addr + bb->size;
 			}
 		}
-		r_anal_fcn_bbadd (f1, bb);
+		r_anal_function_add_block_ll (f1, bb);
 	}
 	// TODO: import data/code/refs
 	// update size
