@@ -765,6 +765,7 @@ typedef struct r_bin_java_obj_t {
 	Sdb *kv;
 	Sdb *AllJavaBinObjs;
 	ut32 id;
+	RStrConstPool constpool;
 } RBinJavaObj;
 
 R_API RList * U(r_bin_java_get_interface_names)(RBinJavaObj * bin);
@@ -1038,7 +1039,7 @@ R_API ut64 r_bin_java_parse_methods (RBinJavaObj *bin, const ut64 offset, const 
 R_API ut64 r_bin_java_parse_attrs (RBinJavaObj *bin, const ut64 offset, const ut8 * buf, const ut64 len);
 R_API int r_bin_java_load_bin (RBinJavaObj *bin, const ut8 * buf, ut64 len);
 R_API void r_bin_add_import (RBinJavaObj * bin, RBinJavaCPTypeObj *cp_obj, const char * type);
-R_API void r_bin_java_set_imports(RBinJavaObj* bin);
+R_API void r_bin_java_set_imports(RBin *rbin, RBinJavaObj* bin);
 R_API RList* r_bin_java_get_imports(RBinJavaObj* bin);
 
 R_API ut64 U(r_bin_java_get_method_start)(RBinJavaObj *bin, RBinJavaField *method);

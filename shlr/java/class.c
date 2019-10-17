@@ -303,8 +303,7 @@ R_API ut32 U(r_bin_java_swap_uint)(ut32 x) {
 
 static bool R_BIN_JAVA_NULL_TYPE_INITTED = false;
 // XXX - this is a global variable used while parsing the class file
-// if multi-threaded class parsing is enabled, this variable needs to
-// be guarded with a lock.
+// this variable should DIE.
 static RBinJavaObj *R_BIN_JAVA_GLOBAL_BIN = NULL;
 static RBinJavaAccessFlags FIELD_ACCESS_FLAGS[] = {
 	{ "public", R_BIN_JAVA_FIELD_ACC_PUBLIC, 6 },
@@ -2596,7 +2595,7 @@ R_API RBinSymbol *r_bin_java_create_new_symbol_from_fm_type_meta(RBinJavaField *
 	return sym;
 }
 
-R_API RBinSymbol *r_bin_java_create_new_symbol_from_ref(RBinJavaCPTypeObj *obj, ut64 baddr) {
+R_API RBinSymbol *r_bin_java_create_new_symbol_from_ref(RBin *bin, RBinJavaCPTypeObj *obj, ut64 baddr) {
 	RBinSymbol *sym = R_NEW0 (RBinSymbol);
 	if (!sym) {
 		return NULL;
@@ -2620,7 +2619,7 @@ R_API RBinSymbol *r_bin_java_create_new_symbol_from_ref(RBinJavaCPTypeObj *obj, 
 			name = NULL;
 		}
 		if (type_name) {
-			sym->type = r_str_const (type_name);
+			sym->type = r_str_constpool_get (&bin->constpool, type_name);
 			R_FREE (type_name);
 		}
 		if (class_name) {
@@ -2956,7 +2955,7 @@ R_API void r_bin_add_import(RBinJavaObj *bin, RBinJavaCPTypeObj *obj, const char
 	imp->classname = class_name;
 	imp->name = name;
 	imp->bind = "NONE";
-	imp->type = r_str_const (type);
+	imp->type = r_str_constpool_get (bin->constpool, type);
 	imp->descriptor = descriptor;
 	imp->ordinal = obj->idx;
 	r_list_append (bin->imports_list, imp);
@@ -3126,6 +3125,7 @@ R_API void *r_bin_java_free(RBinJavaObj *bin) {
 		R_BIN_JAVA_GLOBAL_BIN = NULL;
 	}
 	free (bin->file);
+	r_str_constpool_fini (&bin->constpool);
 	free (bin);
 	return NULL;
 }
